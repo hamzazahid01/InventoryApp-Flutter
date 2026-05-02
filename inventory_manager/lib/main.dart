@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'add_product_screen.dart';
+import 'product_model.dart';
 
 void main() {
   runApp(const InventoryApp());
@@ -12,84 +13,81 @@ class InventoryApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Inventory Manager',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
       home: const HomeScreen(),
     );
   }
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  static List<Product> products = [];
+
+  void addProduct(Product p) {
+    setState(() {
+      products.add(p);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Inventory Dashboard"),
-        centerTitle: true,
       ),
 
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
+      body: Column(
+        children: [
 
-            const Text(
-              "Welcome 👋",
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+          const SizedBox(height: 10),
 
-            const SizedBox(height: 30),
+          // ADD BUTTON
+          ElevatedButton(
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AddProductScreen(),
+                ),
+              );
 
-            // 🔘 ADD PRODUCT BUTTON (IMPORTANT CHANGE HERE)
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text("Add Product"),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const AddProductScreen(),
+              if (result != null && result is Product) {
+                addProduct(result);
+              }
+            },
+            child: const Text("Add Product"),
+          ),
+
+          const SizedBox(height: 10),
+
+          // PRODUCT LIST
+          Expanded(
+            child: products.isEmpty
+                ? const Center(
+              child: Text("No products yet"),
+            )
+                : ListView.builder(
+              itemCount: products.length,
+              itemBuilder: (context, index) {
+                final p = products[index];
+
+                return Card(
+                  child: ListTile(
+                    title: Text(p.name),
+                    subtitle: Text(
+                      "Price: ${p.price} | Stock: ${p.stock}",
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
-
-            const SizedBox(height: 15),
-
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.list),
-                label: const Text("View Products"),
-                onPressed: () {},
-              ),
-            ),
-
-            const SizedBox(height: 15),
-
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.shopping_cart),
-                label: const Text("Sales"),
-                onPressed: () {},
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
