@@ -1,94 +1,36 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'add_product_screen.dart';
-import 'product_model.dart';
+import 'package:provider/provider.dart';
 
-void main() {
-  runApp(const InventoryApp());
-}
+import 'firebase_options.dart';
+import 'providers/auth_notifier.dart';
+import 'providers/inventory_notifier.dart';
+import 'providers/settings_notifier.dart';
+import 'services/firebase_service.dart';
+import 'services/settings_service.dart';
+import 'widgets/bootstrap_gate.dart';
 
-class InventoryApp extends StatelessWidget {
-  const InventoryApp({super.key});
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: const HomeScreen(),
-    );
-  }
-}
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final auth = AuthNotifier();
+  final firebaseService = FirebaseService();
+  final settingsService = SettingsService();
+  final inventory = InventoryNotifier(firebaseService, auth);
+  final settings = SettingsNotifier(settingsService);
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  static List<Product> products = [];
-
-  void addProduct(Product p) {
-    setState(() {
-      products.add(p);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Inventory Dashboard"),
-      ),
-
-      body: Column(
-        children: [
-
-          const SizedBox(height: 10),
-
-          // ADD BUTTON
-          ElevatedButton(
-            onPressed: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AddProductScreen(),
-                ),
-              );
-
-              if (result != null && result is Product) {
-                addProduct(result);
-              }
-            },
-            child: const Text("Add Product"),
-          ),
-
-          const SizedBox(height: 10),
-
-          // PRODUCT LIST
-          Expanded(
-            child: products.isEmpty
-                ? const Center(
-              child: Text("No products yet"),
-            )
-                : ListView.builder(
-              itemCount: products.length,
-              itemBuilder: (context, index) {
-                final p = products[index];
-
-                return Card(
-                  child: ListTile(
-                    title: Text(p.name),
-                    subtitle: Text(
-                      "Price: ${p.price} | Stock: ${p.stock}",
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: auth),
+        ChangeNotifierProvider.value(value: inventory),
+        ChangeNotifierProvider.value(value: settings),
+      ],
+      child: const BootstrapGate(),
+    ),
+  );
 }
