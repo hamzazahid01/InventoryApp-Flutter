@@ -84,7 +84,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
     try {
       final name = _nameCtrl.text.trim();
-      final price = double.tryParse(_priceCtrl.text.trim()) ?? 0;
+      final costPrice = double.tryParse(_priceCtrl.text.trim()) ?? 0;
       final stock = int.tryParse(_stockCtrl.text.trim()) ?? 0;
       final cat = _categoryCtrl.text.trim();
 
@@ -94,7 +94,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         await notifier.updateProduct(
           existing.copyWith(
             name: name,
-            price: price,
+            costPrice: costPrice,
             stock: stock,
             category: cat.isEmpty ? null : cat,
             clearCategory: cat.isEmpty,
@@ -108,7 +108,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       } else {
         final result = await notifier.addProduct(
           name: name,
-          price: price,
+          costPrice: costPrice,
           stock: stock,
           category: cat.isEmpty ? null : cat,
           image: _pickedImage,
@@ -310,7 +310,10 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _priceCtrl,
-              decoration: const InputDecoration(labelText: 'Price'),
+              decoration: const InputDecoration(
+                labelText: 'Cost price (per unit)',
+                helperText: 'Buying price — selling price is set at sale time',
+              ),
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: [

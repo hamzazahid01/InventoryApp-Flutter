@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../screens/analytics_screen.dart';
+import '../screens/profit_analytics_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/products_screen.dart';
 import '../screens/sales_screen.dart';
@@ -20,7 +20,7 @@ class _AppShellState extends State<AppShell> {
     'Dashboard',
     'Products',
     'Sales',
-    'Analytics',
+    'Revenue & Profit',
     'Settings',
   ];
 
@@ -36,7 +36,7 @@ class _AppShellState extends State<AppShell> {
           DashboardScreen(),
           ProductsScreen(),
           SalesScreen(),
-          AnalyticsScreen(),
+          RevenueProfitAnalyticsScreen(),
           SettingsScreen(),
         ],
       ),

@@ -87,7 +87,7 @@ class InventoryNotifier extends ChangeNotifier {
 
   Future<({String productId, String? imageUrl, String? imageError})> addProduct({
     required String name,
-    required double price,
+    required double costPrice,
     required int stock,
     String? category,
     XFile? image,
@@ -97,7 +97,7 @@ class InventoryNotifier extends ChangeNotifier {
     }
     return _firebase.createProduct(
       name: name,
-      price: price,
+      costPrice: costPrice,
       stock: stock,
       category: category,
       image: image,
@@ -129,11 +129,19 @@ class InventoryNotifier extends ChangeNotifier {
   Future<String?> sellProduct({
     required String productId,
     required int quantity,
+    required double sellingPrice,
+    String? notes,
   }) async {
     if (!_auth.isAdmin) {
       return 'Read-only user: cannot record sales.';
     }
-    return _firebase.sellProduct(productId: productId, quantity: quantity);
+    return _firebase.sellProduct(
+      productId: productId,
+      quantity: quantity,
+      sellingPrice: sellingPrice,
+      soldBy: _auth.user?.email,
+      notes: notes,
+    );
   }
 
   Future<String?> undoSale(String saleId) async {
@@ -152,6 +160,8 @@ class InventoryNotifier extends ChangeNotifier {
 
   double get totalRevenue => AnalyticsService.totalRevenue(_sales);
 
+  double get totalProfit => AnalyticsService.totalProfit(_sales);
+
   List<Product> lowStockProducts(int threshold) {
     return _products.where((p) => p.stock < threshold).toList()
       ..sort((a, b) => a.stock.compareTo(b.stock));
@@ -168,6 +178,12 @@ class InventoryNotifier extends ChangeNotifier {
 
   PeriodTotals salesThisYear() =>
       AnalyticsService.totalsForYear(_sales, DateTime.now());
+
+  List<ProductPerformance> topSellingProducts({int limit = 5}) =>
+      AnalyticsService.productPerformance(_sales).take(limit).toList();
+
+  List<ProductPerformance> topProfitProducts({int limit = 5}) =>
+      AnalyticsService.topProfitProducts(_sales, limit: limit);
 
   Future<void> resetAllData() async {
     if (!_auth.isAdmin) {

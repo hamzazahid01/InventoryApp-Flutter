@@ -84,14 +84,22 @@ class FirebaseService {
     return s.isEmpty ? null : s;
   }
 
+  double _readCostPrice(Map<String, dynamic> m) {
+    return (m['costPrice'] as num?)?.toDouble() ??
+        (m['price'] as num?)?.toDouble() ??
+        0;
+  }
+
   Product _productFromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
     final m = d.data();
     return Product(
       id: d.id,
       name: m['name'] as String? ?? '',
-      price: (m['price'] as num?)?.toDouble() ?? 0,
+      costPrice: _readCostPrice(m),
       stock: (m['stock'] as num?)?.toInt() ?? 0,
       sold: (m['sold'] as num?)?.toInt() ?? 0,
+      totalRevenue: (m['totalRevenue'] as num?)?.toDouble() ?? 0,
+      totalProfit: (m['totalProfit'] as num?)?.toDouble() ?? 0,
       category: _readOptionalString(m['category']),
       imageUrl: _readOptionalString(m['imageUrl']),
       localImagePath: _readOptionalString(m['localImagePath']),
@@ -101,13 +109,29 @@ class FirebaseService {
 
   SaleRecord _saleFromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
     final m = d.data();
+    final qty = (m['quantity'] as num?)?.toInt() ?? 0;
+    final sellingPrice = (m['sellingPrice'] as num?)?.toDouble();
+    final totalSaleAmount = (m['totalSaleAmount'] as num?)?.toDouble() ??
+        (m['totalPrice'] as num?)?.toDouble() ??
+        0;
+    final costPrice = (m['costPrice'] as num?)?.toDouble() ?? 0;
+    final resolvedSelling = sellingPrice ??
+        (qty > 0 ? totalSaleAmount / qty : 0);
+    final profit = (m['profit'] as num?)?.toDouble() ??
+        (resolvedSelling - costPrice) * qty;
+
     return SaleRecord(
       id: d.id,
       productId: m['productId'] as String? ?? '',
       productName: m['productName'] as String? ?? '',
-      quantity: (m['quantity'] as num?)?.toInt() ?? 0,
-      totalPrice: (m['totalPrice'] as num?)?.toDouble() ?? 0,
+      quantity: qty,
+      costPrice: costPrice,
+      sellingPrice: resolvedSelling,
+      totalSaleAmount: totalSaleAmount,
+      profit: profit,
       dateTime: _readDate(m['dateTime']),
+      soldBy: _readOptionalString(m['soldBy']),
+      notes: _readOptionalString(m['notes']),
     );
   }
 
@@ -120,9 +144,12 @@ class FirebaseService {
   Map<String, dynamic> _productWriteMap(Product p) {
     return {
       'name': p.name,
-      'price': p.price,
+      'costPrice': p.costPrice,
+      'price': p.costPrice,
       'stock': p.stock,
       'sold': p.sold,
+      'totalRevenue': p.totalRevenue,
+      'totalProfit': p.totalProfit,
       'createdAt': Timestamp.fromDate(p.createdAt),
       if (p.category != null && p.category!.trim().isNotEmpty)
         'category': p.category!.trim(),
@@ -184,7 +211,7 @@ class FirebaseService {
   /// Upload failure yields `imageUrl == null`; product save still succeeds.
   Future<({String productId, String? imageUrl, String? imageError})> createProduct({
     required String name,
-    required double price,
+    required double costPrice,
     required int stock,
     String? category,
     XFile? image,
@@ -208,9 +235,11 @@ class FirebaseService {
     final p = Product(
       id: id,
       name: name.trim(),
-      price: price,
+      costPrice: costPrice,
       stock: stock,
       sold: 0,
+      totalRevenue: 0,
+      totalProfit: 0,
       category: (cat == null || cat.isEmpty) ? null : cat,
       imageUrl: imageUrl,
       localImagePath: localImagePath,
@@ -265,9 +294,12 @@ class FirebaseService {
 
     final map = <String, dynamic>{
       'name': updated.name.trim(),
-      'price': updated.price,
+      'costPrice': updated.costPrice,
+      'price': updated.costPrice,
       'stock': updated.stock,
       'sold': updated.sold,
+      'totalRevenue': updated.totalRevenue,
+      'totalProfit': updated.totalProfit,
     };
     final cat = updated.category?.trim();
     if (cat != null && cat.isNotEmpty) {
@@ -307,8 +339,12 @@ class FirebaseService {
   Future<String?> sellProduct({
     required String productId,
     required int quantity,
+    required double sellingPrice,
+    String? soldBy,
+    String? notes,
   }) async {
     if (quantity < 1) return 'Quantity must be at least 1.';
+    if (sellingPrice < 0) return 'Selling price cannot be negative.';
     try {
       await _db.runTransaction((txn) async {
         final ref = _productsRef.doc(productId);
@@ -319,24 +355,45 @@ class FirebaseService {
         final m = snap.data()!;
         final stock = (m['stock'] as num).toInt();
         final sold = (m['sold'] as num).toInt();
-        final price = (m['price'] as num).toDouble();
+        final costPrice = _readCostPrice(m);
         final name = m['name'] as String? ?? '';
+        final totalRevenue = (m['totalRevenue'] as num?)?.toDouble() ?? 0;
+        final totalProfit = (m['totalProfit'] as num?)?.toDouble() ?? 0;
         if (stock < quantity) {
           throw StateError('Not enough stock available.');
         }
+
+        final totalSaleAmount = sellingPrice * quantity;
+        final profit = (sellingPrice - costPrice) * quantity;
+
         txn.update(ref, {
           'stock': stock - quantity,
           'sold': sold + quantity,
+          'totalRevenue': totalRevenue + totalSaleAmount,
+          'totalProfit': totalProfit + profit,
         });
 
         final saleRef = _salesRef.doc(_uuid.v4());
-        txn.set(saleRef, {
+        final saleMap = <String, dynamic>{
           'productId': productId,
           'productName': name,
           'quantity': quantity,
-          'totalPrice': price * quantity,
+          'costPrice': costPrice,
+          'sellingPrice': sellingPrice,
+          'totalSaleAmount': totalSaleAmount,
+          'totalPrice': totalSaleAmount,
+          'profit': profit,
           'dateTime': Timestamp.fromDate(DateTime.now()),
-        });
+        };
+        final by = soldBy?.trim();
+        if (by != null && by.isNotEmpty) {
+          saleMap['soldBy'] = by;
+        }
+        final noteText = notes?.trim();
+        if (noteText != null && noteText.isNotEmpty) {
+          saleMap['notes'] = noteText;
+        }
+        txn.set(saleRef, saleMap);
       });
       return null;
     } on StateError catch (e) {
@@ -368,6 +425,12 @@ class FirebaseService {
         final pm = prodSnap.data()!;
         final stock = (pm['stock'] as num).toInt();
         final sold = (pm['sold'] as num).toInt();
+        final totalRevenue = (pm['totalRevenue'] as num?)?.toDouble() ?? 0;
+        final totalProfit = (pm['totalProfit'] as num?)?.toDouble() ?? 0;
+        final saleAmount = (sm['totalSaleAmount'] as num?)?.toDouble() ??
+            (sm['totalPrice'] as num?)?.toDouble() ??
+            0;
+        final profit = (sm['profit'] as num?)?.toDouble() ?? 0;
         if (sold < qty) {
           throw StateError('Data mismatch; cannot undo safely.');
         }
@@ -375,6 +438,8 @@ class FirebaseService {
         txn.update(prodRef, {
           'stock': stock + qty,
           'sold': sold - qty,
+          'totalRevenue': (totalRevenue - saleAmount).clamp(0, double.infinity),
+          'totalProfit': (totalProfit - profit).clamp(0, double.infinity),
         });
       });
       return null;

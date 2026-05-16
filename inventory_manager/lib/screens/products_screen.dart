@@ -193,7 +193,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           ),
                           title: Text(p.name),
                           subtitle: Text(
-                            '${formatMoney(p.price, cc)} · Stock ${p.stock} · Sold ${p.sold}'
+                            'Cost ${formatMoney(p.costPrice, cc)} · Stock ${p.stock} · Sold ${p.sold}'
+                            '${p.totalProfit > 0 ? ' · Profit ${formatMoney(p.totalProfit, cc)}' : ''}'
                             '${p.category != null ? ' · ${p.category}' : ''}',
                           ),
                           isThreeLine: true,

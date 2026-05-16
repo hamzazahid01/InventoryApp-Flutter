@@ -9,6 +9,7 @@ import '../utils/currency_format.dart';
 import '../widgets/charts/sales_line_chart.dart';
 import '../widgets/charts/stock_bar_chart.dart';
 import '../widgets/metric_card.dart';
+import '../widgets/sales_profit_summary_panel.dart';
 import '../widgets/section_header.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -24,11 +25,16 @@ class DashboardScreen extends StatelessWidget {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final daily = AnalyticsService.dailyRevenueSeries(inv.sales, 14);
-    final sortedDays = daily.keys.toList()..sort();
-    final spots = <FlSpot>[
+    final dailyRev = AnalyticsService.dailyRevenueSeries(inv.sales, 14);
+    final dailyProfit = AnalyticsService.dailyProfitSeries(inv.sales, 14);
+    final sortedDays = dailyRev.keys.toList()..sort();
+    final revSpots = <FlSpot>[
       for (var i = 0; i < sortedDays.length; i++)
-        FlSpot(i.toDouble(), daily[sortedDays[i]] ?? 0),
+        FlSpot(i.toDouble(), dailyRev[sortedDays[i]] ?? 0),
+    ];
+    final profitSpots = <FlSpot>[
+      for (var i = 0; i < sortedDays.length; i++)
+        FlSpot(i.toDouble(), dailyProfit[sortedDays[i]] ?? 0),
     ];
 
     final stockMap = AnalyticsService.stockByCategory(inv.products);
@@ -39,7 +45,7 @@ class DashboardScreen extends StatelessWidget {
     final t = inv.salesToday();
     final w = inv.salesThisWeek();
     final m = inv.salesThisMonth();
-    final y = inv.salesThisYear();
+    final topSelling = inv.topSellingProducts(limit: 5);
 
     return RefreshIndicator(
       onRefresh: () => context.read<InventoryNotifier>().load(),
@@ -57,24 +63,24 @@ class DashboardScreen extends StatelessWidget {
                   icon: Icons.inventory_2_outlined,
                 ),
                 MetricCard(
-                  title: 'Stock available',
+                  title: 'Stock remaining',
                   value: '${inv.totalStockAvailable}',
                   subtitle: 'units on hand',
                   icon: Icons.warehouse_outlined,
                   accentColor: Colors.teal,
                 ),
                 MetricCard(
-                  title: 'Items sold',
-                  value: '${inv.totalSoldUnits}',
-                  subtitle: 'lifetime',
-                  icon: Icons.shopping_bag_outlined,
-                  accentColor: Colors.deepPurple,
-                ),
-                MetricCard(
                   title: 'Total revenue',
                   value: formatMoney(inv.totalRevenue, cc),
-                  subtitle: 'from recorded sales',
+                  subtitle: 'from all sales',
                   icon: Icons.payments_outlined,
+                  accentColor: Colors.blue.shade700,
+                ),
+                MetricCard(
+                  title: 'Total profit',
+                  value: formatMoney(inv.totalProfit, cc),
+                  subtitle: 'selling price − cost',
+                  icon: Icons.trending_up,
                   accentColor: Colors.green.shade700,
                 ),
               ];
@@ -102,51 +108,56 @@ class DashboardScreen extends StatelessWidget {
             },
           ),
           const SizedBox(height: 20),
-          const SectionHeader(title: 'Sales summary'),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final wide = constraints.maxWidth >= 720;
-              Widget tile(String label, double rev, int units) {
-                return Card(
-                  child: ListTile(
-                    title: Text(label),
-                    subtitle: Text('$units units · ${formatMoney(rev, cc)}'),
-                  ),
-                );
-              }
-
-              final tiles = [
-                tile('Today', t.revenue, t.unitsSold),
-                tile('This week', w.revenue, w.unitsSold),
-                tile('This month', m.revenue, m.unitsSold),
-                tile('This year', y.revenue, y.unitsSold),
-              ];
-              if (wide) {
-                return Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    for (final t in tiles)
-                      SizedBox(
-                        width: (constraints.maxWidth - 12) / 2,
-                        child: t,
-                      ),
-                  ],
-                );
-              }
-              return Column(
-                children: [
-                  for (var i = 0; i < tiles.length; i++) ...[
-                    if (i > 0) const SizedBox(height: 10),
-                    tiles[i],
-                  ],
-                ],
-              );
-            },
+          const SectionHeader(title: 'Sales & profit summary'),
+          SalesProfitSummaryPanel(
+            currencyCode: cc,
+            today: t,
+            week: w,
+            month: m,
           ),
           const SizedBox(height: 20),
+          const SectionHeader(title: 'Top selling products'),
+          if (topSelling.isEmpty)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  'No sales yet.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.55),
+                      ),
+                ),
+              ),
+            )
+          else
+            ...topSelling.map(
+              (e) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.local_fire_department_outlined, size: 20),
+                    ),
+                    title: Text(e.name),
+                    subtitle: Text(
+                      '${e.quantitySold} sold · Profit ${formatMoney(e.profit, cc)}',
+                    ),
+                    trailing: Text(
+                      formatMoney(e.revenue, cc),
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
           const SectionHeader(
-            title: 'Low stock alerts',
+            title: 'Low stock warning',
             action: Icon(Icons.warning_amber_rounded, color: Colors.orange),
           ),
           if (low.isEmpty)
@@ -176,7 +187,7 @@ class DashboardScreen extends StatelessWidget {
                     ),
                     title: Text(p.name),
                     subtitle: Text(
-                      '${p.stock} left · ${formatMoney(p.price, cc)}',
+                      '${p.stock} left · Cost ${formatMoney(p.costPrice, cc)}',
                     ),
                   ),
                 ),
@@ -187,9 +198,20 @@ class DashboardScreen extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: SalesLineChart(
-                spots: spots,
+                spots: revSpots,
                 currencyCode: cc,
-                title: 'Sales trend (14 days)',
+                title: 'Revenue trend (14 days)',
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: SalesLineChart(
+                spots: profitSpots,
+                currencyCode: cc,
+                title: 'Profit trend (14 days)',
               ),
             ),
           ),

@@ -3,9 +3,14 @@ import '../models/sale_record.dart';
 
 class PeriodTotals {
   final double revenue;
+  final double profit;
   final int unitsSold;
 
-  const PeriodTotals({required this.revenue, required this.unitsSold});
+  const PeriodTotals({
+    required this.revenue,
+    required this.profit,
+    required this.unitsSold,
+  });
 }
 
 class ProductPerformance {
@@ -13,12 +18,14 @@ class ProductPerformance {
   final String name;
   final int quantitySold;
   final double revenue;
+  final double profit;
 
   const ProductPerformance({
     required this.productId,
     required this.name,
     required this.quantitySold,
     required this.revenue,
+    required this.profit,
   });
 }
 
@@ -49,61 +56,67 @@ class AnalyticsService {
   }
 
   static double totalRevenue(List<SaleRecord> sales) {
-    return sales.fold<double>(0, (s, r) => s + r.totalPrice);
+    return sales.fold<double>(0, (s, r) => s + r.totalSaleAmount);
+  }
+
+  static double totalProfit(List<SaleRecord> sales) {
+    return sales.fold<double>(0, (s, r) => s + r.profit);
+  }
+
+  static PeriodTotals _totalsFor(
+    List<SaleRecord> sales,
+    bool Function(SaleRecord r) include,
+  ) {
+    double rev = 0;
+    double profit = 0;
+    int units = 0;
+    for (final r in sales) {
+      if (include(r)) {
+        rev += r.totalSaleAmount;
+        profit += r.profit;
+        units += r.quantity;
+      }
+    }
+    return PeriodTotals(revenue: rev, profit: profit, unitsSold: units);
   }
 
   static PeriodTotals totalsForDay(List<SaleRecord> sales, DateTime day) {
-    double rev = 0;
-    int units = 0;
-    for (final r in sales) {
-      if (_isSameDay(r.dateTime, day)) {
-        rev += r.totalPrice;
-        units += r.quantity;
-      }
-    }
-    return PeriodTotals(revenue: rev, unitsSold: units);
+    return _totalsFor(sales, (r) => _isSameDay(r.dateTime, day));
   }
 
   static PeriodTotals totalsForWeek(List<SaleRecord> sales, DateTime reference) {
-    double rev = 0;
-    int units = 0;
-    for (final r in sales) {
-      if (_inWeekContaining(r.dateTime, reference)) {
-        rev += r.totalPrice;
-        units += r.quantity;
-      }
-    }
-    return PeriodTotals(revenue: rev, unitsSold: units);
+    return _totalsFor(
+      sales,
+      (r) => _inWeekContaining(r.dateTime, reference),
+    );
   }
 
   static PeriodTotals totalsForMonth(List<SaleRecord> sales, DateTime reference) {
-    double rev = 0;
-    int units = 0;
-    for (final r in sales) {
-      if (_inMonth(r.dateTime, reference)) {
-        rev += r.totalPrice;
-        units += r.quantity;
-      }
-    }
-    return PeriodTotals(revenue: rev, unitsSold: units);
+    return _totalsFor(sales, (r) => _inMonth(r.dateTime, reference));
   }
 
   static PeriodTotals totalsForYear(List<SaleRecord> sales, DateTime reference) {
-    double rev = 0;
-    int units = 0;
-    for (final r in sales) {
-      if (_inYear(r.dateTime, reference)) {
-        rev += r.totalPrice;
-        units += r.quantity;
-      }
-    }
-    return PeriodTotals(revenue: rev, unitsSold: units);
+    return _totalsFor(sales, (r) => _inYear(r.dateTime, reference));
   }
 
-  /// Last [days] calendar days including today; bucket by date key yyyy-MM-dd.
   static Map<DateTime, double> dailyRevenueSeries(
     List<SaleRecord> sales,
     int days,
+  ) {
+    return _dailySeries(sales, days, (r) => r.totalSaleAmount);
+  }
+
+  static Map<DateTime, double> dailyProfitSeries(
+    List<SaleRecord> sales,
+    int days,
+  ) {
+    return _dailySeries(sales, days, (r) => r.profit);
+  }
+
+  static Map<DateTime, double> _dailySeries(
+    List<SaleRecord> sales,
+    int days,
+    double Function(SaleRecord) valueOf,
   ) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -115,21 +128,32 @@ class AnalyticsService {
     for (final r in sales) {
       final key = DateTime(r.dateTime.year, r.dateTime.month, r.dateTime.day);
       if (map.containsKey(key)) {
-        map[key] = (map[key] ?? 0) + r.totalPrice;
+        map[key] = (map[key] ?? 0) + valueOf(r);
       }
     }
     return map;
   }
 
   static Map<int, double> monthlyRevenueYear(List<SaleRecord> sales, int year) {
+    return _monthlyYear(sales, year, (r) => r.totalSaleAmount);
+  }
+
+  static Map<int, double> monthlyProfitYear(List<SaleRecord> sales, int year) {
+    return _monthlyYear(sales, year, (r) => r.profit);
+  }
+
+  static Map<int, double> _monthlyYear(
+    List<SaleRecord> sales,
+    int year,
+    double Function(SaleRecord) valueOf,
+  ) {
     final map = <int, double>{};
     for (var m = 1; m <= 12; m++) {
       map[m] = 0;
     }
     for (final r in sales) {
       if (r.dateTime.year == year) {
-        map[r.dateTime.month] =
-            (map[r.dateTime.month] ?? 0) + r.totalPrice;
+        map[r.dateTime.month] = (map[r.dateTime.month] ?? 0) + valueOf(r);
       }
     }
     return map;
@@ -144,14 +168,16 @@ class AnalyticsService {
           productId: r.productId,
           name: r.productName,
           quantitySold: r.quantity,
-          revenue: r.totalPrice,
+          revenue: r.totalSaleAmount,
+          profit: r.profit,
         );
       } else {
         byId[r.productId] = ProductPerformance(
           productId: r.productId,
           name: existing.name,
           quantitySold: existing.quantitySold + r.quantity,
-          revenue: existing.revenue + r.totalPrice,
+          revenue: existing.revenue + r.totalSaleAmount,
+          profit: existing.profit + r.profit,
         );
       }
     }
@@ -160,7 +186,38 @@ class AnalyticsService {
     return list;
   }
 
-  /// Products with zero sales in [sales], or bottom by sold units from catalog.
+  static List<ProductPerformance> topRevenueProducts(
+    List<SaleRecord> sales, {
+    int limit = 8,
+  }) {
+    final list = List<ProductPerformance>.from(productPerformance(sales))
+      ..sort((a, b) => b.revenue.compareTo(a.revenue));
+    return list.take(limit).toList();
+  }
+
+  static List<ProductPerformance> topProfitProducts(
+    List<SaleRecord> sales, {
+    int limit = 8,
+  }) {
+    final list = List<ProductPerformance>.from(productPerformance(sales))
+      ..sort((a, b) => b.profit.compareTo(a.profit));
+    return list.take(limit).toList();
+  }
+
+  static List<SaleRecord> recentSales(
+    List<SaleRecord> sales, {
+    int limit = 12,
+  }) {
+    return sales.take(limit).toList();
+  }
+
+  static List<SaleRecord> recentProfitableSales(
+    List<SaleRecord> sales, {
+    int limit = 12,
+  }) {
+    return sales.where((s) => s.profit > 0).take(limit).toList();
+  }
+
   static List<Product> lowPerformingProducts(
     List<Product> products,
     List<SaleRecord> sales, {
@@ -181,7 +238,6 @@ class AnalyticsService {
     return sorted.take(limit).toList();
   }
 
-  /// Stock grouped by category (null → "Uncategorized").
   static Map<String, int> stockByCategory(List<Product> products) {
     final map = <String, int>{};
     for (final p in products) {
